@@ -1,6 +1,9 @@
-'use strict';
 
 (function(process) {
+  'use strict';
+
+  let prefix = 'KNOT: ';
+
   this.global = this;
 
   Object.defineProperty(global, 'console', {
@@ -15,7 +18,7 @@
     return {
       log: function(message) {
         // throw new Error('Not implemented');
-        return message;
+        return prefix + message;
       }
     };
   };

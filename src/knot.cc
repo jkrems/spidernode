@@ -49,8 +49,8 @@ int main(int argc, const char *argv[])
         return 1;
 
     JS_SetErrorReporter(cx, jsReporter);
-    JS::CompileOptions *pOptions = new JS::CompileOptions(cx, JSVERSION_1_8);
-    JS::CompileOptions bsOptions(cx);
+    JS::CompileOptions *mainOptions = new JS::CompileOptions(cx, JSVERSION_1_8);
+    JS::CompileOptions bsOptions(cx, JSVERSION_1_8);
 
     JS::Value rval;
     JSString *str;
@@ -93,7 +93,7 @@ int main(int argc, const char *argv[])
 
         printf("Ran:\n%s", bootstrapSource->source);
 
-        JSScript* compiled = JS_CompileScript(cx, *global, script.c_str(), script.length(), pOptions->setFileAndLine(filename, lineno));
+        JSScript* compiled = JS_CompileScript(cx, *global, script.c_str(), script.length(), mainOptions->setFileAndLine(filename, lineno));
 
         if (!compiled)
             return 1;
