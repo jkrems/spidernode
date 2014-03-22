@@ -2,6 +2,8 @@
   'variables': {
     'library_files': [
       'src/knot.js',
+      'lib/util.js',
+      'lib/console.js',
     ],
   },
   'targets': [

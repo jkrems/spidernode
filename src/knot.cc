@@ -8,6 +8,56 @@
 
 #include "knot_natives.h"
 
+
+void Binding(const FunctionCallbackInfo<Value>& args) {
+  HandleScope handle_scope(args.GetIsolate());
+  Environment* env = Environment::GetCurrent(args.GetIsolate());
+
+  Local<String> module = args[0]->ToString();
+  String::Utf8Value module_v(module);
+
+  Local<Object> cache = env->binding_cache_object();
+  Local<Object> exports;
+
+  if (cache->Has(module)) {
+    exports = cache->Get(module)->ToObject();
+    args.GetReturnValue().Set(exports);
+    return;
+  }
+
+  // Append a string to process.moduleLoadList
+  char buf[1024];
+  snprintf(buf, sizeof(buf), "Binding %s", *module_v);
+
+  Local<Array> modules = env->module_load_list_array();
+  uint32_t l = modules->Length();
+  modules->Set(l, OneByteString(node_isolate, buf));
+
+  node_module_struct* mod = get_builtin_module(*module_v);
+  if (mod != NULL) {
+    exports = Object::New();
+    // Internal bindings don't have a "module" object, only exports.
+    assert(mod->register_func == NULL);
+    assert(mod->register_context_func != NULL);
+    Local<Value> unused = Undefined(env->isolate());
+    mod->register_context_func(exports, unused, env->context());
+    cache->Set(module, exports);
+  } else if (!strcmp(*module_v, "constants")) {
+    exports = Object::New();
+    DefineConstants(exports);
+    cache->Set(module, exports);
+  } else if (!strcmp(*module_v, "natives")) {
+    exports = Object::New();
+    DefineJavaScript(exports);
+    cache->Set(module, exports);
+  } else {
+    return ThrowError("No such module");
+  }
+
+  args.GetReturnValue().Set(exports);
+}
+
+
 /* The class of the global object. */
 static JSClass global_class = {
         "global",
