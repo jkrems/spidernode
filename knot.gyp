@@ -4,6 +4,18 @@
       'src/knot.js',
       'lib/util.js',
       'lib/console.js',
+      'lib/tty.js',
+      'lib/net.js',
+      'lib/events.js',
+      'lib/stream.js',
+      'lib/_stream_duplex.js',
+      'lib/_stream_passthrough.js',
+      'lib/_stream_readable.js',
+      'lib/_stream_transform.js',
+      'lib/_stream_writable.js',
+      'lib/timers.js',
+      'lib/_linklist.js',
+      'lib/assert.js',
     ],
   },
   'targets': [
@@ -15,7 +27,8 @@
         'GCC_WARN_ABOUT_INVALID_OFFSETOF_MACRO': 'NO',
       },
       'sources': [
-        'src/knot.cc'
+        'src/knot.cc',
+        'src/tty_wrap.cc',
       ],
       'include_dirs': [
         'deps/spidermonkey/src/build-release/dist/include',
