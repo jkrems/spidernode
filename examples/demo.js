@@ -10,11 +10,8 @@ let mul = function({init}, ...more) {
   );
 };
 
-let nowISO = (new Date()).toISOString();
-// console.log('Hello World!');
-// console.log("It is currently: " + nowISO);
-
 setTimeout(function() {
-  console.log("After some time.");
-  setTimeout(function() {}, 100);
-}, 0);
+  let nowISO = (new Date()).toISOString();
+  console.log("It is currently: " + nowISO);
+  setTimeout(() => console.log('ok'), 100);
+}, 10);
