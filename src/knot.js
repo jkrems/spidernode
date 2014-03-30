@@ -35,27 +35,10 @@
   global.process = process;
 
   process.env = [];
+  process._asyncFlags = {};
 
-  function Console(stdout, stderr) {
-    this._stdout = stdout;
-    this._stderr = stderr;
-  };
-
-  Console.prototype = Object.create(Object.prototype, {
-    log: {
-      value: function(fstr, ...args) {
-        var util = NativeModule.require('util');
-        process.stdout.write(util.format(fstr, ...args) + '\n');
-      }
-    }
-  });
-
-  Object.defineProperties(global, {
-    console: {
-      get: function() {
-        return new Console(process.stdout, process.stderr);
-      }
-    }
+  process.__defineGetter__('console', function() {
+    return NativeModule.require('console');
   });
 
 
@@ -63,10 +46,14 @@
     var stream;
     var tty_wrap = process.binding('tty_wrap');
 
-    switch (/* tty_wrap.guessHandleType(fd) */ 'TTY') {
+    switch (tty_wrap.guessHandleType(fd)) {
       case 'TTY':
         var tty = NativeModule.require('tty');
         stream = new tty.WriteStream(fd);
+
+        // Hack to have stream not keep the event loop alive.
+        // See https://github.com/joyent/node/issues/1726
+        // stream._handle.unref();
         break;
 
       default:
@@ -95,17 +82,51 @@
       return stdout;
     });
 
-    // process.__defineGetter__('stderr', function() {
-    //   if (stderr) return stderr;
-    //   stderr = createWritableStdioStream(2);
-    //   stderr.destroy = stderr.destroySoon = function(er) {
-    //     er = er || new Error('process.stderr cannot be closed.');
-    //     stderr.emit('error', er);
-    //   };
-    //   return stderr;
-    // });
+    process.__defineGetter__('stderr', function() {
+      if (stderr) return stderr;
+      stderr = createWritableStdioStream(2);
+      // stderr.destroy = stderr.destroySoon = function(er) {
+      //   er = er || new Error('process.stderr cannot be closed.');
+      //   stderr.emit('error', er);
+      // };
+      return stderr;
+    });
   };
-  
+
+
+  function globalTimeouts() {
+    global.setTimeout = function() {
+      var t = NativeModule.require('timers');
+      return t.setTimeout.apply(this, arguments);
+    };
+
+    global.setInterval = function() {
+      var t = NativeModule.require('timers');
+      return t.setInterval.apply(this, arguments);
+    };
+
+    global.clearTimeout = function() {
+      var t = NativeModule.require('timers');
+      return t.clearTimeout.apply(this, arguments);
+    };
+
+    global.clearInterval = function() {
+      var t = NativeModule.require('timers');
+      return t.clearInterval.apply(this, arguments);
+    };
+
+    global.setImmediate = function() {
+      var t = NativeModule.require('timers');
+      return t.setImmediate.apply(this, arguments);
+    };
+
+    global.clearImmediate = function() {
+      var t = NativeModule.require('timers');
+      return t.clearImmediate.apply(this, arguments);
+    };
+  };
+
+
   // Below you find a minimal module system, which is used to load the node
   // core modules found in lib/*.js. All core modules are compiled into the
   // node binary, so they can be loaded faster.
@@ -189,4 +210,5 @@
   };
 
   processStdio();
+  globalTimeouts();
 });

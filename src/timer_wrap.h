@@ -19,43 +19,51 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-#ifndef SRC_TTY_WRAP_H_
-#define SRC_TTY_WRAP_H_
+#ifndef SRC_TIMER_WRAP_H_
+#define SRC_TIMER_WRAP_H_
 
 #include <jsapi.h>
 #include <uv.h>
 
 namespace knot {
 
-class TTYWrap {
-  public:
-    static void Initialize(JSContext *cx, JS::HandleObject exports);
+class TimerWrap {
+ public:
+  static void Initialize(JSContext *cx, JS::HandleObject exports);
 
-    uv_tty_t* UVHandle();
+  static bool New(JSContext *cx, unsigned argc, JS::Value *vp);
 
-    static bool GuessHandleType(JSContext *cx, unsigned argc, JS::Value *vp);
-    static bool IsTTY(JSContext *cx, unsigned argc, JS::Value *vp);
-    static bool GetWindowSize(JSContext *cx, unsigned argc, JS::Value *vp);
-    static bool SetRawMode(JSContext *cx, unsigned argc, JS::Value *vp);
-    static bool Write(JSContext *cx, unsigned argc, JS::Value *vp);
-    static bool New(JSContext *cx, unsigned argc, JS::Value *vp);
-    static bool Unref(JSContext *cx, unsigned argc, JS::Value *vp);
+  static bool Start(JSContext *cx, unsigned argc, JS::Value *vp);
 
-    static void AfterWrite(uv_write_t *req, int status);
+  static bool Stop(JSContext *cx, unsigned argc, JS::Value *vp);
 
-  private:
-    TTYWrap(JSContext *cx,
-            int fd,
-            bool readable);
+  static bool Again(JSContext *cx, unsigned argc, JS::Value *vp);
 
-    struct WriteWrap {
-      uv_write_t req;
-      uv_buf_t buf;
-    };
+  static bool SetRepeat(JSContext *cx, unsigned argc, JS::Value *vp);
 
-    uv_tty_t handle_;
+  static bool GetRepeat(JSContext *cx, unsigned argc, JS::Value *vp);
+
+  static void OnTimeout(uv_timer_t* handle);
+
+  static bool Now(JSContext *cx, unsigned argc, JS::Value *vp);
+
+  JS::Value* MakeCallback(uint32_t index,
+                          const JS::HandleValueArray& argv);
+
+  JS::Value* MakeCallback(JS::HandleValue cb,
+                          const JS::HandleValueArray& argv);
+
+ private:
+
+  TimerWrap(JSContext *cx, JS::HandleObject object);
+
+  ~TimerWrap();
+
+  uv_timer_t handle_;
+  JS::RootedObject object_;
+  JSContext *context_;
 };
 
 }  // namespace knot
 
-#endif  // SRC_TTY_WRAP_H_
+#endif  // SRC_TIMER_WRAP_H_

@@ -9,12 +9,13 @@
 #include "knot_natives.h"
 
 #include "tty_wrap.h"
+#include "timer_wrap.h"
 
 using knot::TTYWrap;
+using knot::TimerWrap;
 
 bool Binding(JSContext *cx, unsigned argc, JS::Value *vp) {
   JS::CallArgs args = CallArgsFromVp(argc, vp);
-  // JSObject *global = JS_GetGlobalForObject(cx, &args.callee());
 
   JS::RootedObject exports(cx, JS_NewObject(cx, NULL, JS::NullPtr(), JS::NullPtr()));
 
@@ -31,6 +32,8 @@ bool Binding(JSContext *cx, unsigned argc, JS::Value *vp) {
     }
   } else if(!strcmp(module.ptr(), "tty_wrap")) {
     TTYWrap::Initialize(cx, exports);
+  } else if(!strcmp(module.ptr(), "timer_wrap")) {
+    TimerWrap::Initialize(cx, exports);
   } else {
     JS_ReportError(cx, "Unknown binding: %s", module.ptr());
     return false;
@@ -91,15 +94,16 @@ bool Binding(JSContext *cx, unsigned argc, JS::Value *vp) {
 
 /* The class of the global object. */
 static JSClass global_class = {
-        "global",
-        JSCLASS_GLOBAL_FLAGS,
-        JS_PropertyStub,
-        JS_DeletePropertyStub,
-        JS_PropertyStub,
-        JS_StrictPropertyStub,
-        JS_EnumerateStub,
-        JS_ResolveStub,
-        JS_ConvertStub
+    "global",
+    JSCLASS_GLOBAL_FLAGS,
+    JS_PropertyStub,
+    JS_DeletePropertyStub,
+    JS_PropertyStub,
+    JS_StrictPropertyStub,
+    JS_EnumerateStub,
+    JS_ResolveStub,
+    JS_ConvertStub,
+    nullptr
 };
 
 
@@ -109,13 +113,160 @@ void jsReporter(JSContext *cx, const char *message, JSErrorReport *report)
 }
 
 
+static JSObject *
+NewGlobalObject(JSContext *cx)
+{
+    JS::CompartmentOptions options;
+    options.setVersion(JSVERSION_1_8);
+    JS::RootedObject glob(cx, JS_NewGlobalObject(cx, &global_class, nullptr,
+                                             JS::DontFireOnNewGlobalHook, options));
+    if (!glob)
+        return nullptr;
+
+    {
+        JSAutoCompartment ac(cx, glob);
+
+        if (!JS_InitStandardClasses(cx, glob))
+            return nullptr;
+
+        // Setup bindings
+        if (!JS_DefineFunction(cx, glob, "binding", &Binding, 1, 0))
+            return nullptr;
+    }
+
+    JS_FireOnNewGlobalObject(cx, glob);
+
+    return glob;
+}
+
+
+bool coreBootstrap(JSContext *cx, JS::HandleObject global)
+{
+    using JS::CompileOptions;
+    using JS::ObjectOrNullValue;
+    using JS::RootedObject;
+    using JS::RootedScript;
+    using JS::RootedValue;
+    using JS::HandleValueArray;
+    using knot::_native;
+    using knot::natives;
+
+    const _native* bootstrapSource = &natives[0];
+    int lineno = 0;
+
+    {
+        JSAutoRequest ar(cx);
+        JSAutoCompartment ac(cx, global);
+
+        CompileOptions compileOpts(cx, JSVERSION_1_8);
+        compileOpts.setIntroductionType("js shell interactive")
+                   .setUTF8(true)
+                   .setCompileAndGo(true)
+                   .setFileAndLine(bootstrapSource->name, 0);
+
+        RootedScript script(cx);
+        script = JS_CompileScript(cx, global, bootstrapSource->source, bootstrapSource->source_len, compileOpts);
+        if (!script)
+            return false;
+        RootedValue bootstrapFunction(cx);
+        if (!JS_ExecuteScript(cx, global, script, bootstrapFunction.address()))
+            return false;
+
+        RootedValue globalValue(cx, ObjectOrNullValue(global));
+        HandleValueArray params(globalValue);
+
+        RootedValue rval(cx);
+        if (!JS_CallFunctionValue(cx, global, bootstrapFunction, params, &rval))
+            return false;
+    }
+
+    return true;
+}
+
+
+bool runScript(JSContext *cx, JS::HandleObject global, const char* filename, const char* source, size_t length)
+{
+    using JS::CompileOptions;
+    using JS::RootedScript;
+    using JS::RootedValue;
+
+    int lineno = 0;
+
+    {
+        JSAutoRequest ar(cx);
+        JSAutoCompartment ac(cx, global);
+
+        CompileOptions compileOpts(cx, JSVERSION_1_8);
+        compileOpts.setFileAndLine(filename, 0);
+
+        RootedScript script(cx);
+        script = JS_CompileScript(cx, global, source, length, compileOpts);
+
+        if (!script)
+            return false;
+
+        RootedValue scriptVal(cx);
+        if (!JS_ExecuteScript(cx, global, script, scriptVal.address()))
+            return false;
+    }
+
+    return true;
+}
+
+
+bool executeScriptFile(JSContext *cx, JS::HandleObject global, const char* filename)
+{
+    std::ifstream t(filename);
+    std::stringstream buffer;
+    buffer << t.rdbuf();
+
+    const knot::_native* bootstrapSource = &knot::natives[0];
+
+    std::string source = buffer.str();
+
+    return runScript(cx, global, filename, source.c_str(), source.length());
+}
+
+
+uv_loop_t *setupEventLoop(JSContext *cx)
+{
+    uv_loop_t *loop = uv_default_loop();
+    JS_SetContextPrivate(cx, loop);
+    return loop;
+}
+
+
+int run(JSContext *cx, const char *filename)
+{
+    uv_loop_t *loop;
+
+    JS_BeginRequest(cx);
+    JS::RootedObject global(cx);
+    global = NewGlobalObject(cx);
+    if (global == NULL)
+        return 1;
+    JS_EndRequest(cx);
+
+    loop = setupEventLoop(cx);
+
+    if(!coreBootstrap(cx, global)) {
+        return 2;
+    }
+
+    if (!executeScriptFile(cx, global, filename)) {
+        return 3;
+    }
+
+    uv_run(loop, UV_RUN_DEFAULT);
+
+    return 0;
+}
+
+
 int main(int argc, const char *argv[])
 {
     JSRuntime *rt;
     JSContext *cx;
-    JS::RootedObject  *global;
-
-    uv_loop_t *loop = uv_default_loop();
 
     JS_Init();
 
@@ -127,70 +278,13 @@ int main(int argc, const char *argv[])
     if (cx == NULL)
         return 1;
 
-    global = new JS::RootedObject(cx, JS_NewGlobalObject(cx, &global_class, nullptr, JS::DontFireOnNewGlobalHook));
-    if (global == NULL)
-        return 1;
-
     JS_SetErrorReporter(cx, jsReporter);
-    JS::CompileOptions *mainOptions = new JS::CompileOptions(cx, JSVERSION_1_8);
-    JS::CompileOptions bsOptions(cx, JSVERSION_1_8);
 
-    JS::Value rval;
-    JSString *str;
-    bool ok;
+    int exitCode = run(cx, argv[1]);
 
-    const char *filename = argv[1];
-    std::ifstream t(filename);
-    std::stringstream buffer;
-    buffer << t.rdbuf();
-
-    const knot::_native* bootstrapSource = &knot::natives[0];
-
-    std::string script = buffer.str();
-
-    int lineno = 0;
-    {
-        JSAutoCompartment ac(cx, *global);
-        JS_InitStandardClasses(cx, *global);
-
-        // Setup bindings
-        if (!JS_DefineFunction(cx, *global, "binding", &Binding, 1, 0))
-          return 1;
-
-        // Eval.
-        bsOptions.setIntroductionType("js shell interactive")
-               .setUTF8(true)
-               .setCompileAndGo(true)
-               .setFileAndLine(bootstrapSource->name, lineno);
-        JS::RootedScript bsScript(cx);
-        bsScript = JS_CompileScript(cx, *global, bootstrapSource->source, bootstrapSource->source_len, bsOptions);
-        if (!bsScript)
-            return 1;
-        JS::RootedValue bsResult(cx);
-        if (!JS_ExecuteScript(cx, *global, bsScript, bsResult.address()))
-            return 1;
-
-        JS::RootedValue globalValue(cx, ObjectOrNullValue(*global));
-        JS::HandleValueArray bsParams(globalValue);
-
-        JS::RootedValue bsFnResult(cx);
-        if (!JS_CallFunctionValue(cx, *global, bsResult, bsParams, &bsFnResult))
-            return 1;
-
-        JSScript* compiled = JS_CompileScript(cx, *global, script.c_str(), script.length(), mainOptions->setFileAndLine(filename, lineno));
-
-        if (!compiled)
-            return 1;
-
-        ok = JS_ExecuteScript(cx, *global, compiled, &rval);
-        if (!ok || (rval.isNull() | rval.isFalse() ) )
-            return 1;
-    }
-
-    uv_run(loop, UV_RUN_DEFAULT);
     JS_DestroyContext(cx);
     JS_DestroyRuntime(rt);
     JS_ShutDown();
 
-    return 0;
+    return exitCode;
 }

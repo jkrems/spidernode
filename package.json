@@ -1,0 +1,24 @@
+{
+  "name": "knot",
+  "version": "0.0.0",
+  "description": "#spidernode",
+  "main": "index.js",
+  "directories": {
+    "example": "examples"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "install": "node-gyp rebuild"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jkrems/spidernode"
+  },
+  "author": "",
+  "license": "ISC",
+  "gypfile": true,
+  "bugs": {
+    "url": "https://github.com/jkrems/spidernode/issues"
+  },
+  "homepage": "https://github.com/jkrems/spidernode"
+}

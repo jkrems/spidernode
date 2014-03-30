@@ -3,10 +3,10 @@
 
     git clone https://git.chromium.org/external/gyp.git build/gyp
 
-#### deps/spidermonkey
+#### deps/gecko
 
-js folder of firefox, build with static library option
+    git clone https://github.com/mozilla/gecko-dev.git deps/gecko
 
 #### deps/libuv
 
-git clone https://github.com/joyent/libuv deps/libuv
+    git clone https://github.com/joyent/libuv deps/libuv

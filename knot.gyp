@@ -18,6 +18,34 @@
       'lib/assert.js',
     ],
   },
+
+
+  'target_defaults': {
+    'default_configuration': 'Debug',
+    'configurations': {
+      'Debug': {
+        'defines': [ 'DEBUG', '_DEBUG' ],
+        'cflags': [ '-g', '-O0' ],
+        'msvs_settings': {
+          'VCCLCompilerTool': {
+            'RuntimeLibrary': 1, # static debug
+            'Optimization': 0, # /Od, no optimization
+            'MinimalRebuild': 'false',
+            'OmitFramePointers': 'false',
+            'BasicRuntimeChecks': 3, # /RTC1
+          },
+          'VCLinkerTool': {
+            'LinkIncremental': 2, # enable incremental linking
+          },
+        },
+        'xcode_settings': {
+          'GCC_OPTIMIZATION_LEVEL': '0', # stop gyp from defaulting to -Os
+        },
+      },
+    },
+  },
+
+
   'targets': [
     {
       'target_name': 'knot',
@@ -29,14 +57,15 @@
       'sources': [
         'src/knot.cc',
         'src/tty_wrap.cc',
+        'src/timer_wrap.cc',
       ],
       'include_dirs': [
-        'deps/spidermonkey/src/build-release/dist/include',
+        'deps/gecko/js/src/build-debug/dist/include',
         'deps/libuv/include',
         '<(SHARED_INTERMEDIATE_DIR)', # for knot_natives.h
       ],
       'library_dirs': [
-        'deps/spidermonkey/src/build-release/dist/lib',
+        'deps/gecko/js/src/build-debug/dist/lib',
         'deps/libuv/out/Debug',
       ],
       'libraries': [

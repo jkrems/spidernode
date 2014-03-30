@@ -11,5 +11,10 @@ let mul = function({init}, ...more) {
 };
 
 let nowISO = (new Date()).toISOString();
-console.log('Hello World!');
-console.log("It is currently: " + nowISO);
+// console.log('Hello World!');
+// console.log("It is currently: " + nowISO);
+
+setTimeout(function() {
+  console.log("After some time.");
+  setTimeout(function() {}, 100);
+}, 0);

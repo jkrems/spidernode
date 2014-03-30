@@ -6,3 +6,4 @@ gyp-mac-tool
 /out
 /build
 *.pyc
+node_modules

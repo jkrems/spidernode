@@ -19,6 +19,8 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+#include <assert.h>
+
 #include "tty_wrap.h"
 
 namespace knot {
@@ -43,12 +45,13 @@ static JSClass TTYWrap_class = {
 
 static JSFunctionSpec TTYWrap_methods[] = {
   JS_FN("write", TTYWrap::Write, 1, 0),
+  JS_FN("unref", TTYWrap::Unref, 0, 0),
   JS_FS_END
 };
 
 void TTYWrap::Initialize(JSContext *cx, JS::HandleObject exports) {
 
-  JSObject *ttyWrapProtoType = JS_InitClass(cx, exports,
+  JS_InitClass(cx, exports,
     js::NullPtr(), /* parent_proto */
     &TTYWrap_class, /* clasp */
     TTYWrap::New, /* constructor */
@@ -58,6 +61,8 @@ void TTYWrap::Initialize(JSContext *cx, JS::HandleObject exports) {
     NULL, /* static properties */
     NULL /* static methods */
   );
+
+  JS_DefineFunction(cx, exports, "guessHandleType", &GuessHandleType, 1, 0);
 
   // Environment* env = Environment::GetCurrent(context);
 
@@ -99,31 +104,42 @@ void TTYWrap::Initialize(JSContext *cx, JS::HandleObject exports) {
 
 
 uv_tty_t* TTYWrap::UVHandle() {
-  // return &handle_;
-  return NULL;
+  return &handle_;
+}
+
+
+bool TTYWrap::Unref(JSContext *cx, unsigned argc, JS::Value *vp) {
+  JS::CallArgs args = CallArgsFromVp(argc, vp);
+
+  JS::RootedObject self(cx, &args.thisv().toObject());
+  TTYWrap *wrap = (TTYWrap *) JS_GetPrivate(self);
+
+  uv_unref((uv_handle_t *)wrap->UVHandle());
+
+  return true;
 }
 
 
 bool TTYWrap::GuessHandleType(JSContext *cx, unsigned argc, JS::Value *vp) {
-  // HandleScope scope(node_isolate);
-  // int fd = args[0]->Int32Value();
-  // assert(fd >= 0);
+  JS::CallArgs args = CallArgsFromVp(argc, vp);
+  int fd = args[0].toInt32();
+  assert(fd >= 0);
 
-  // uv_handle_type t = uv_guess_handle(fd);
-  // const char* type = NULL;
+  uv_handle_type t = uv_guess_handle(fd);
+  const char* type = NULL;
 
-  // switch (t) {
-  // case UV_TCP: type = "TCP"; break;
-  // case UV_TTY: type = "TTY"; break;
-  // case UV_UDP: type = "UDP"; break;
-  // case UV_FILE: type = "FILE"; break;
-  // case UV_NAMED_PIPE: type = "PIPE"; break;
-  // case UV_UNKNOWN_HANDLE: type = "UNKNOWN"; break;
-  // default:
-  //   abort();
-  // }
+  switch (t) {
+  case UV_TCP: type = "TCP"; break;
+  case UV_TTY: type = "TTY"; break;
+  case UV_UDP: type = "UDP"; break;
+  case UV_FILE: type = "FILE"; break;
+  case UV_NAMED_PIPE: type = "PIPE"; break;
+  case UV_UNKNOWN_HANDLE: type = "UNKNOWN"; break;
+  default:
+    abort();
+  }
 
-  // args.GetReturnValue().Set(OneByteString(node_isolate, type));
+  args.rval().setString(JS_NewStringCopyZ(cx, type));
   return true;
 }
 
@@ -177,37 +193,34 @@ bool TTYWrap::Write(JSContext *cx, unsigned argc, JS::Value *vp) {
   JS::RootedObject self(cx, &args.thisv().toObject());
   TTYWrap *wrap = (TTYWrap *) JS_GetPrivate(self);
 
-  uv_write_t req;
-  uv_buf_t buf;
+  WriteWrap *write = new WriteWrap();
+  uv_write_t &req = write->req;
+  uv_buf_t &buf = write->buf;
   buf.base = (char*)chunk.ptr();
   buf.len = strlen(buf.base);
-  uv_write(&req, (uv_stream_t*) &wrap->handle_, &buf, 1, NULL);
+  uv_write(&req, (uv_stream_t*) wrap->UVHandle(), &buf, 1, TTYWrap::AfterWrite);
 
   return true;
+}
+
+
+void TTYWrap::AfterWrite(uv_write_t *req, int status) {
+  WriteWrap *write = (WriteWrap*)req;
+  delete write;
 }
 
 
 bool TTYWrap::New(JSContext *cx, unsigned argc, JS::Value *vp) {
   JS::CallArgs args = CallArgsFromVp(argc, vp);
 
-  JS::RootedObject callee(cx, &args.callee());
-  JS::RootedValue protov(cx);
-  if (!JS_GetProperty(cx, callee, "prototype", &protov))
-    return false;
-
-  if (!protov.isObject()) {
-    return false;
-  }
-
-  JS::RootedObject proto(cx, &protov.toObject());
-  JS::RootedObject tty(cx, JS_NewObject(cx, &TTYWrap_class, proto, JS::NullPtr()));
+  JS::RootedObject tty(cx, JS_NewObjectForConstructor(cx, &TTYWrap_class, vp));
   if (!tty)
     return false;
 
   int32_t fd = args[0].toInt32();
   bool readable = args[1].toBoolean();
 
-  TTYWrap *wrap = new TTYWrap(fd, readable);
+  TTYWrap *wrap = new TTYWrap(cx, fd, readable);
   JS_SetPrivate(tty, wrap);
 
   args.rval().setObject(*tty);
@@ -216,8 +229,11 @@ bool TTYWrap::New(JSContext *cx, unsigned argc, JS::Value *vp) {
 }
 
 
-TTYWrap::TTYWrap(int fd, bool readable) {
-  uv_tty_init(uv_default_loop(), &handle_, fd, readable);
+TTYWrap::TTYWrap(JSContext *cx, int fd, bool readable) {
+  uv_loop_t *loop = (uv_loop_t *)JS_GetContextPrivate(cx);
+
+  uv_tty_init(loop, &handle_, fd, readable);
+  handle_.data = this;
 }
 
 }  // namespace knot
