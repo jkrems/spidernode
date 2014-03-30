@@ -68,6 +68,7 @@ class TimerWrap {
   ~TimerWrap();
 
   uv_timer_t handle_;
+  uv_handle_t* openHandle_;
   JS::Heap<JSObject*> object_;
   JSContext *context_;
 };

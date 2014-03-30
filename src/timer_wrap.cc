@@ -176,13 +176,15 @@ bool TimerWrap::Now(JSContext *cx, unsigned argc, JS::Value *vp) {
 }
 
 TimerWrap::TimerWrap(JSContext *cx, JS::HandleObject object) :
-    context_(cx), object_(object)
+    context_(cx), object_(object), openHandle_(NULL)
 {
   uv_loop_t *loop = (uv_loop_t *)JS_GetContextPrivate(cx);
 
   int r = uv_timer_init(loop, &handle_);
   assert(r == 0);
   handle_.data = this;
+
+  openHandle_ = (uv_handle_t *)&handle_;
 }
 
 TimerWrap::~TimerWrap() {
@@ -241,7 +243,14 @@ bool TimerWrap::Close(JSContext *cx, unsigned argc, JS::Value *vp)
   JS::RootedObject self(cx, &args.thisv().toObject());
   TimerWrap *wrap = (TimerWrap *) JS_GetPrivate(self);
 
-  uv_close((uv_handle_t *)&wrap->handle_, OnClose);
+  // guard against uninitialized handle or double close
+  if (wrap == NULL || wrap->openHandle_ == NULL) {
+    return true;
+  }
+
+  uv_close(wrap->openHandle_, OnClose);
+  // protect against using the now closed handle
+  wrap->openHandle_ = NULL;
 
   return true;
 }

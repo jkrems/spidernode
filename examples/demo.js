@@ -23,7 +23,7 @@ console.log(mul({init: 2}, 3, twice(2))); // 2 * 3 * 4 = 24
 setTimeout(function() {
   const nowISO = (new Date()).toISOString();
   console.log("It is currently: " + nowISO);
-  setTimeout(() => console.log('ok'), 100);
+  setTimeout(() => console.log('Nested timeout'), 100);
 }, 10);
 
 
