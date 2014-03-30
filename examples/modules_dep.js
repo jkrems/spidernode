@@ -1,3 +1,6 @@
-
-export default function b() {};
-
+/**
+ * Simple dependency for modules.js
+ */
+export default function() {
+  return 'ok';
+};

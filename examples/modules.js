@@ -1,7 +1,6 @@
+/**
+ * Example of using ES6 modules
+ */
+import f from './modules_dep';
 
-import b from './modules_dep';
-
-export function a() {
-  return 'ok';
-};
-
+console.log(f());
