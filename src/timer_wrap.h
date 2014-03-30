@@ -47,7 +47,15 @@ class TimerWrap {
 
   static bool Now(JSContext *cx, unsigned argc, JS::Value *vp);
 
+
+  static bool Close(JSContext *cx, unsigned argv, JS::Value *vp);
+  static void OnClose(uv_handle_t* handle);
+
+
   JS::Value* MakeCallback(uint32_t index,
+                          const JS::HandleValueArray& argv);
+
+  JS::Value* MakeCallback(const char* symbol,
                           const JS::HandleValueArray& argv);
 
   JS::Value* MakeCallback(JS::HandleValue cb,
@@ -60,7 +68,7 @@ class TimerWrap {
   ~TimerWrap();
 
   uv_timer_t handle_;
-  JS::RootedObject object_;
+  JS::Heap<JSObject*> object_;
   JSContext *context_;
 };
 

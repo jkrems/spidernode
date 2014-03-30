@@ -1,4 +1,4 @@
 
 setTimeout(function() {
   console.log('ok');
-}, 10);
+}, 100);

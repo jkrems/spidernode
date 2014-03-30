@@ -49,6 +49,7 @@ static JSClass TimerWrap_class = {
 
 static JSFunctionSpec TimerWrap_methods[] = {
   JS_FN("start", TimerWrap::Start, 2, 0),
+  JS_FN("close", TimerWrap::Close, 0, 0),
   JS_FS_END
 };
 
@@ -102,9 +103,10 @@ bool TimerWrap::New(JSContext *cx, unsigned argc, JS::Value *vp) {
     return false;
 
   TimerWrap *wrap = new TimerWrap(cx, timer);
-  JS_SetPrivate(timer, wrap);
 
-  args.rval().setObject(*timer);
+  JS_SetPrivate(wrap->object_, wrap);
+
+  args.rval().setObject(*wrap->object_);
 
   return true;
 }
@@ -174,8 +176,11 @@ bool TimerWrap::Now(JSContext *cx, unsigned argc, JS::Value *vp) {
 }
 
 TimerWrap::TimerWrap(JSContext *cx, JS::HandleObject object) :
-    context_(cx), object_(cx, object) {
-  int r = uv_timer_init(uv_default_loop(), &handle_);
+    context_(cx), object_(object)
+{
+  uv_loop_t *loop = (uv_loop_t *)JS_GetContextPrivate(cx);
+
+  int r = uv_timer_init(loop, &handle_);
   assert(r == 0);
   handle_.data = this;
 }
@@ -186,100 +191,62 @@ TimerWrap::~TimerWrap() {
 
 JS::Value* TimerWrap::MakeCallback(JS::HandleValue cb,
                                    const JS::HandleValueArray& argv) {
+  JSAutoRequest ar(context_);
 
   JS::RootedValue rval(context_);
 
-  printf("About to call callback: %d\n", cb.isObject());
-  if (!JS_CallFunctionValue(context_, object_, cb, argv, &rval)) {
-    printf("Failed to call timeout callback\n");
+  JS::RootedObject obj(context_, object_);
+  if (!JS_CallFunctionValue(context_, obj, cb, argv, &rval)) {
     return NULL;
   }
-  printf("Called callback\n");
-  // assert(env()->context() == env()->isolate()->GetCurrentContext());
-
-  // v8::Local<v8::Object> context = object();
-  // v8::Local<v8::Object> process = env()->process_object();
-
-  // v8::TryCatch try_catch;
-  // try_catch.SetVerbose(true);
-
-  // if (has_async_queue()) {
-  //   v8::Local<v8::Value> val = context.As<v8::Value>();
-  //   env()->async_listener_load_function()->Call(process, 1, &val);
-
-  //   if (try_catch.HasCaught())
-  //     return v8::Undefined(env()->isolate());
-  // }
-
-  // v8::Local<v8::Value> ret = cb->Call(context, argc, argv);
-
-  // if (try_catch.HasCaught()) {
-  //   return Undefined(env()->isolate());
-  // }
-
-  // if (has_async_queue()) {
-  //   v8::Local<v8::Value> val = context.As<v8::Value>();
-  //   env()->async_listener_unload_function()->Call(process, 1, &val);
-
-  //   if (try_catch.HasCaught())
-  //     return v8::Undefined(env()->isolate());
-  // }
-
-  // Environment::TickInfo* tick_info = env()->tick_info();
-
-  // if (tick_info->in_tick()) {
-  //   return ret;
-  // }
-
-  // if (tick_info->length() == 0) {
-  //   tick_info->set_index(0);
-  //   return ret;
-  // }
-
-  // tick_info->set_in_tick(true);
-
-  // // TODO(trevnorris): Consider passing "context" to _tickCallback so it
-  // // can then be passed as the first argument to the nextTick callback.
-  // // That should greatly help needing to create closures.
-  // env()->tick_callback_function()->Call(process, 0, NULL);
-
-  // tick_info->set_in_tick(false);
-
-  // if (try_catch.HasCaught()) {
-  //   tick_info->set_last_threw(true);
-  //   return Undefined(env()->isolate());
-  // }
-
-  // return ret;
-  return NULL;
+  return rval.address();
 }
 
 
-// v8::Handle<v8::Value> AsyncWrap::MakeCallback(
-//     const v8::Handle<v8::String> symbol,
-//     int argc,
-//     v8::Handle<v8::Value>* argv) {
-//   v8::Local<v8::Value> cb_v = object()->Get(symbol);
-//   v8::Local<v8::Function> cb = cb_v.As<v8::Function>();
-//   assert(cb->IsFunction());
+JS::Value* TimerWrap::MakeCallback(
+    const char* symbol,
+    const JS::HandleValueArray& argv) {
+  JSAutoRequest ar(context_);
+  JSAutoCompartment ac(context_, object_);
 
-//   return MakeCallback(cb, argc, argv);
-// }
+  JS::RootedValue cb(context_);
+  JS::RootedObject obj(context_, object_);
+
+  if (!JS_GetProperty(context_, obj, symbol, &cb)) {
+    return NULL;
+  }
+  return MakeCallback(cb, argv);
+}
 
 
 JS::Value* TimerWrap::MakeCallback(uint32_t index,
                                    const JS::HandleValueArray& argv) {
-  JS::RootedValue cb_v(context_);
-  if (!JS_GetElement(context_, object_, index, &cb_v)) {
-    printf("Could not get property #%d\n", index);
+  JSAutoRequest ar(context_);
+  JSAutoCompartment ac(context_, object_);
+
+  JS::RootedValue cb(context_);
+  JS::RootedObject obj(context_, object_);
+
+  if (!JS_GetElement(context_, obj, index, &cb)) {
     return NULL;
   }
-  return MakeCallback(cb_v, argv);
-  // v8::Local<v8::Value> cb_v = object()->Get(index);
-  // v8::Local<v8::Function> cb = cb_v.As<v8::Function>();
-  // assert(cb->IsFunction());
+  return MakeCallback(cb, argv);
+}
 
-  // return MakeCallback(cb, argc, argv);
+
+bool TimerWrap::Close(JSContext *cx, unsigned argc, JS::Value *vp)
+{
+  JS::CallArgs args = CallArgsFromVp(argc, vp);
+
+  JS::RootedObject self(cx, &args.thisv().toObject());
+  TimerWrap *wrap = (TimerWrap *) JS_GetPrivate(self);
+
+  uv_close((uv_handle_t *)&wrap->handle_, OnClose);
+
+  return true;
+}
+
+void TimerWrap::OnClose(uv_handle_t* handle) {
 }
 
 
