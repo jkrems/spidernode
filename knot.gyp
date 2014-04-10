@@ -55,6 +55,7 @@
         'GCC_WARN_ABOUT_INVALID_OFFSETOF_MACRO': 'NO',
       },
       'sources': [
+        'src/main.cc',
         'src/knot.cc',
         'src/tty_wrap.cc',
         'src/timer_wrap.cc',
