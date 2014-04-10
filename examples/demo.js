@@ -32,11 +32,6 @@ let counter = 0;
 const interval = setInterval(function() {
   console.log('Interval #' + (++counter));
   if (counter >= 5) {
-    /**
-     * @todo Currently fails, details:
-     *
-     * Assertion failed: (!(handle->flags & (UV_CLOSING | UV_CLOSED))), function uv_close, file ../src/unix/core.c, line 91.
-     */
     clearInterval(interval);
   }
 }, 50);
